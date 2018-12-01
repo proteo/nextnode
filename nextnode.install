@@ -1,0 +1,195 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the NextNode module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function nextnode_schema() {
+  $schema['nextnode_profiles'] = array(
+    'description' => 'Stores NextNode profile definitions.',
+    'fields' => array(
+      'pid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'no export' => TRUE,
+        'description' => 'Serial id for this profile.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'description' => 'Machine-readable name for this profile.',
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'description' => 'Administrative title for this profile.',
+      ),
+      'active' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+        'description' => 'Profile status.',
+      ),
+      'config' => array(
+        'type' => 'blob',
+        'size' => 'big',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+        'description' => 'Serialized data containing profile settings.',
+      ),
+    ),
+    'primary key' => array('pid'),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'indexes' => array(
+      'pid' => array('pid'),
+      'active' => array('active'),
+    ),
+  );
+  $schema['nextnode_index'] = array(
+    'description' => 'Stores relationship between nodes and NextNode profiles.',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The {node}.nid of the node.',
+      ),
+      'profile' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'description' => 'Machine name of a NextNode profile.',
+      ),
+    ),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'profile' => array('profile'),
+    ),
+  );
+  return $schema;
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function nextnode_requirements($phase) {
+  $requirements = array();
+  if ($phase == 'runtime') {
+    // Ensure translations don't break at install time.
+    $t = get_t();
+
+    // Waypoints library.
+    $waypoints = libraries_detect('waypoints');
+    $waypoints_version = isset($waypoints['version']) ? $waypoints['version'] : NULL;
+    if (empty($waypoints['installed'])) {
+      $error_type = isset($waypoints['error']) ? drupal_ucfirst($waypoints['error']) : '';
+      $error_message = isset($waypoints['error message']) ? $waypoints['error message'] : '';
+      $requirements['waypoints_library'] = array(
+        'title' => $t('Waypoints library'),
+        'value' => $t('@e: Need at least @a', array('@e' => $error_type, '@a' => NEXTNODE_WAYPOINTS_MIN_VERSION)),
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('!error Please download the !link and see README.txt for installation instructions.',
+          array(
+            '!error' => $error_message,
+            '!link' => l($t('Waypoints'), $waypoints['download url']),
+          )
+        ),
+      );
+    }
+    elseif (version_compare($waypoints_version, NEXTNODE_WAYPOINTS_MIN_VERSION, '>=')) {
+      $requirements['waypoints_library'] = array(
+        'title' => $t('Waypoints library'),
+        'severity' => REQUIREMENT_OK,
+        'value' => $waypoints_version,
+      );
+    }
+    else {
+      $requirements['waypoints_library'] = array(
+        'title' => $t('Waypoints library'),
+        'value' => $t('Outdated version. Need at least @a', array('@a' => NEXTNODE_WAYPOINTS_MIN_VERSION)),
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('You need to download at least version @ver of the !link and replace the old version located in the %path directory on your server.',
+          array(
+            '!link' => l($t('Waypoints'), $waypoints['download url']),
+            '@ver' => NEXTNODE_WAYPOINTS_MIN_VERSION,
+            '%path' => $waypoints['library path'],
+          )
+        ),
+      );
+    }
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implements hook_install().
+ */
+function nextnode_install() {
+  $t = get_t();
+  // Create global variables.
+  foreach (_nextnode_variables() as $name => $value) {
+    variable_set($name, $value);
+  }
+  // Create the default profile.
+  module_load_include('inc', 'nextnode', 'nextnode.profile');
+  $profile = nextnode_default_profile(array(
+    'name' => 'default',
+    'title' => $t('Default'),
+  ));
+  nextnode_profile_save($profile, FALSE);
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function nextnode_uninstall() {
+  // Start with global variables.
+  $variables = array_keys(_nextnode_variables());
+
+  // Add variables created by content type.
+  foreach (node_type_get_types() as $type) {
+    $variables[] = 'nextnode_enable_' . $type->type;
+    $variables[] = 'nextnode_profile_' . $type->type;
+    $variables[] = 'nextnode_override_' . $type->type;
+  }
+
+  foreach ($variables as $variable) {
+    variable_del($variable);
+  }
+
+  // Delete the profiles cache.
+  cache_clear_all('nextnode_profiles', 'cache');
+}
+
+/**
+ * Helper function, define the set of global variables used by NextNode.
+ *
+ * @return array
+ *   Associative array with default values keyed by name.
+ */
+function _nextnode_variables() {
+  return array(
+    'nextnode_change_url' => 1,
+    'nextnode_load_css' => 1,
+    'nextnode_minified_code' => 1,
+    'nextnode_load_offset' => 200,
+    'nextnode_scroll_offset' => 100,
+    'nextnode_sticky_title' => 1,
+    'nextnode_sticky_title_zindex' => 99,
+    'nextnode_sticky_title_top' => 0,
+    'nextnode_sticky_title_offset' => -100,
+    'nextnode_hook_selector' => 'nextnode-wrapper',
+    'nextnode_next_selector' => 'nextnode-next',
+    'nextnode_content_selector' => 'nextnode-node',
+  );
+}

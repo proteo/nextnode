@@ -1,0 +1,15 @@
+name = NextNode
+description = Provides the ability to load additional content automatically on page scrolling.
+core = 7.x
+version = 7.x-1.0
+
+; Module dependencies
+dependencies[] = system (>=7.17)
+dependencies[] = node
+dependencies[] = libraries (>=2.x)
+
+; Config path
+configure = admin/config/content/nextnode
+
+; Custom pager class
+files[] = classes/NextNodePager.inc

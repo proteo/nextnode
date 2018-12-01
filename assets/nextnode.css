@@ -1,0 +1,62 @@
+/* Loader styling */
+.nextnodeloading {
+  background-image: url(throbber.svg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  margin-top: 50px;
+  margin-bottom: 50px;
+  height: 100px;
+  overflow: hidden;
+  display: none;
+}
+/* Loading text is visible for screen readers only */
+.nextnodeloading__text {
+  border: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  position: absolute;
+}
+.nextnodesticky__wrapper {
+  height: 0 !important;
+}
+/* Sticky title styling */
+.nextnodesticky {
+  -webkit-transform: translateY(-100%);
+  -ms-transform: translateY(-100%);
+  -o-transform: translateY(-100%);
+  transform: translateY(-100%);
+  -webkit-transition: all .25s cubic-bezier(.4,0,.2,1);
+  transition: all .25s cubic-bezier(.4,0,.2,1);
+  position: fixed;
+  right: 0;
+  left: 0;
+}
+.nextnodesticky--active {
+  -webkit-transform: translateY(0);
+  -ms-transform: translateY(0);
+  -o-transform: translateY(0);
+  transform: translateY(0);
+}
+.nextnodesticky__title {
+  font-size: 1em;
+  line-height: 1;
+  background-color: #fff;
+  border-bottom: 2px solid #ccc;
+  margin: 0;
+  padding: 10px;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nextnodesticky__meter {
+  background-color: #0d747c;
+  margin-top: -2px;
+  width: 0;
+  height: 2px;
+}

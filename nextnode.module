@@ -1,0 +1,1182 @@
+<?php
+
+/**
+ * @file
+ * Main Utility module file.
+ */
+
+/**
+ * The minimum required version of the Waypoints plugin.
+ */
+define('NEXTNODE_WAYPOINTS_MIN_VERSION', '4.0');
+
+// Include profile functions.
+module_load_include('inc', 'nextnode', 'nextnode.profile');
+
+// Include Ctools integration.
+module_load_include('inc', 'nextnode', 'nextnode.ctools');
+
+/**
+ * Implements hook_menu().
+ */
+function nextnode_menu() {
+  // Main NextNode profiles page.
+  $items['admin/config/content/nextnode'] = array(
+    'title' => 'NextNode',
+    'description' => 'Manage NextNode profiles',
+    'page callback' => 'nextnode_profile_list',
+    'access arguments' => array('administer nextnode'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'nextnode.admin.inc',
+  );
+  $items['admin/config/content/nextnode/profiles'] = array(
+    'title' => 'Profiles',
+    'description' => 'Manage NextNode profiles',
+    'page callback' => 'nextnode_profile_list',
+    'access arguments' => array('administer nextnode'),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'file' => 'nextnode.admin.inc',
+  );
+  // Global settings form.
+  $items['admin/config/content/nextnode/settings'] = array(
+    'title' => 'Settings',
+    'description' => 'NextNode settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nextnode_settings_form'),
+    'access arguments' => array('administer nextnode'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'nextnode.admin.inc',
+  );
+  // Profile creation form.
+  $items['admin/config/content/nextnode/add'] = array(
+    'title' => 'Add profile',
+    'description' => 'NextNode profile creation form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nextnode_profile_form'),
+    'access arguments' => array('administer nextnode'),
+    'type' => MENU_LOCAL_ACTION,
+    'file' => 'nextnode.admin.inc',
+  );
+  // Profile deletion callback (confirms before deletion).
+  $items['admin/config/content/nextnode/%nextnode_profile/delete'] = array(
+    'title' => 'Delete profile',
+    'description' => 'Delete profile',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nextnode_profile_delete', 4),
+    'access arguments' => array('administer nextnode'),
+    'type' => MENU_CALLBACK,
+    'file' => 'nextnode.admin.inc',
+  );
+  // Profile editing form.
+  $items['admin/config/content/nextnode/%nextnode_profile/edit'] = array(
+    'title' => 'Edit profile',
+    'description' => 'NextNode profile editing form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nextnode_profile_form', 4),
+    'access arguments' => array('administer nextnode'),
+    'file' => 'nextnode.admin.inc',
+  );
+  // Profile cloning.
+  $items['admin/config/content/nextnode/%nextnode_profile/clone'] = array(
+    'title' => 'Clone profile',
+    'description' => 'NextNode profile cloning form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nextnode_profile_clone', 4),
+    'access arguments' => array('administer nextnode'),
+    'file' => 'nextnode.admin.inc',
+  );
+  // Delivery callback.
+  $items['nextnode/%/%'] = array(
+    'title' => 'Deliver standalone nodes using Ajax.',
+    'page callback' => 'nextnode_load',
+    'page arguments' => array(1, 2),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('access content'),
+    'delivery callback' => 'nextnode_delivery_callback',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function nextnode_permission() {
+  $permissions = array(
+    'administer nextnode' => array(
+      'title' => t('Administer NextNode'),
+      'description' => t('Manage NextNode profiles and modify module settings.'),
+    ),
+    'node-specific profile override' => array(
+      'title' => t('Node-specific profile overriding'),
+      'description' => t('Allow users to override the default profile on individual nodes.'),
+    ),
+  );
+  return $permissions;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function nextnode_theme($existing, $type, $theme, $path) {
+  $themes = array(
+    'nextnode_wrapper' => array(
+      'variables' => array(
+        'hook_selector_class' => NULL,
+        'markup' => NULL,
+      ),
+    ),
+    'nextnode_node' => array(
+      'variables' => array(
+        'node' => NULL,
+        'attributes' => NULL,
+        'markup' => NULL,
+      ),
+    ),
+    'nextnode_link' => array(
+      'variables' => array(
+        'title' => NULL,
+        'path' => NULL,
+        'options' => NULL,
+      ),
+    ),
+    'nextnode_sticky_title' => array(
+      'variables' => array(
+        'title' => NULL,
+      ),
+      'template' => 'nextnode-sticky-title',
+      'path' => $path . '/templates',
+    ),
+    'nextnode_loading' => array(
+      'variables' => array(
+        'text' => NULL,
+      ),
+      'template' => 'nextnode-loading',
+      'path' => $path . '/templates',
+    ),
+  );
+  return $themes;
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function nextnode_block_info() {
+  $blocks = array();
+  $blocks['sticky_title'] = array(
+    'info' => t('NextNode Sticky Title'),
+    'status' => 1,
+    'region' => 'content',
+    'weight' => -10,
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function nextnode_block_view($delta) {
+  $block = array();
+  switch ($delta) {
+    case 'sticky_title':
+      if (variable_get('nextnode_sticky_title')) {
+        $node = menu_get_object('node', 1);
+        if ($node && isset($node->type)) {
+          $profile = nextnode_get_content_type_profile($node->type);
+          if ($profile && $profile->active) {
+            $block['subject'] = t('Sticky title');
+            $block['content'] = array(
+              '#markup' => theme('nextnode_sticky_title', array(
+                'title' => $node->title,
+              )),
+            );
+          }
+        }
+      }
+      break;
+  }
+
+  return $block;
+}
+
+/**
+ * Implements hook_libraries_info().
+ */
+function nextnode_libraries_info() {
+  $libraries = array(
+    'waypoints' => array(
+      'name' => 'Waypoints',
+      'vendor url' => 'http://imakewebthings.com/waypoints/',
+      'download url' => 'https://github.com/imakewebthings/waypoints/zipball/latest',
+      'version arguments' => array(
+        'file' => 'jquery.waypoints.min.js',
+        'pattern' => '/Waypoints - (\d+\.\d+(\.\d+)?)/',
+        'lines' => 2,
+      ),
+      'files' => array(
+        'js' => array(
+          // Main library file.
+          'jquery.waypoints.min.js',
+          // Shortcuts.
+          'shortcuts/infinite.min.js',
+          'shortcuts/inview.min.js',
+          'shortcuts/sticky.min.js',
+        ),
+      ),
+    ),
+  );
+
+  return $libraries;
+}
+
+/**
+ * Implements hook_help().
+ */
+function nextnode_help($path, $arg) {
+  $output = '';
+
+  switch ($path) {
+    // Main module help for the NextNode module.
+    case 'admin/help#nextnode':
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('NextNode provides the ability to load additional content automatically on page scrolling. It uses the popular <a href="@url" target="_blank">Waypoints</a> library to append new content on the fly (using Ajax) on node pages when users scroll down the page and reach a configurable threshold.',
+          array('@url' => 'http://imakewebthings.com/waypoints/')) . '</p>';
+      $output .= '<p>' . t('You can create any number of <a href="@url">profiles</a>, which are reusable presets with specific settings to generate, filter and sort the loaded content, and can be assigned by content type.',
+          array('@url' => url('admin/config/content/nextnode'))) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Create "infinite scroll" content pages.') . '</dt>';
+      $output .= '<dd>' . t('Improve your users experience by fetching new content automatically on page scrolling. You can control how many nodes will be fetched with each request, and you can limit this functionality to a certain number of requests (scratch the "infinite" part).') . '</dd>';
+      $output .= '<dt>' . t('Add "Load more" functionality to content pages.') . '</dt>';
+      $output .= '<dd>' . t('If you want to offer your users the ability to load more content but put them in control of it, you can disable automatic loading on scroll and use a clickable link instead.') . '</dd>';
+      $output .= '</dl>';
+      $output .= '<h3>' . t('How to') . '</h3>';
+      $output .= '<p>' . t("Depending on your site's configuration and characteristics, getting everything working may not be as straightforward and some adjustments may be needed. Please see the included README.txt file for a full explanation of the install process, how the module works and how to configure it properly.") . '</p>';
+      return $output;
+
+    // Brief description of NextNode profiles on the profiles page.
+    case 'admin/config/content/nextnode':
+      $output .= '<p>' . t('Profiles allow you to create presets to deliver content under specific conditions. Each profile can be assigned to one or various content types and have different settings to generate, filter and sort content loaded from pages of that content type.') . '</p>';
+  }
+
+  return $output;
+}
+
+/**
+ * Page callback to deliver standalone nodes requested by Ajax.
+ *
+ * @param int $request_nid
+ *   ID of the currently viewed node (the page issuing the request).
+ * @param int $page
+ *   Page number, defines the current result set.
+ *
+ * @return string
+ *   HTML markup.
+ */
+function nextnode_load($request_nid, $page) {
+  // Define the constant used to validate that the current request has been
+  // initiated by NextNode.
+  define('NEXTNODE_REQUEST', TRUE);
+
+  // The nid of the node that issued the request.
+  define('NEXTNODE_REQUEST_NID', intval($request_nid));
+
+  // Get the profile assigned to the requesting node.
+  $profile = nextnode_get_active_profile();
+
+  // This never should happen, but just to make sure...
+  if (!$profile) {
+    return '';
+  }
+
+  // We'll need access to this profile in some functions.
+  drupal_static('_nextnode_request_profile_', $profile);
+  drupal_static('_nextnode_request_path_', current_path());
+  drupal_static('_nextnode_request_view_mode_', $profile->view_mode);
+
+  // Validate page number.
+  $page = intval($page) > 0 ? $page : 1;
+
+  // Execute the function used to fetch IDs of the node(s) we'll be delivering
+  // according the defined fetch mode.
+  $function = 'nextnode_get_nids_' . $profile->fetch_mode;
+  // Set proper page offset for db queries.
+  $pager_page = ($page - 1);
+  $nids = $function($pager_page, $profile);
+
+  $output = '';
+  if (!empty($nids)) {
+    // Operate as anonymous user.
+    if ($profile->anonymize) {
+      nextnode_session('unset');
+    }
+    // Generate HTML output.
+    $output .= nextnode_process_nodes($nids);
+    // Restore user session.
+    if ($profile->anonymize) {
+      nextnode_session('reset');
+    }
+    // Check if we'll be able to fetch another page of results.
+    if (!nextnode_is_last_page($page, $profile->max_pages)) {
+      // We must increase the page number so we get the next result set in the
+      // subsequent request.
+      $page++;
+      // Append the selector to load the next node(s) in the queue.
+      $output .= nextnode_link_selector(NEXTNODE_REQUEST_NID, $page);
+    }
+  }
+
+  return $output;
+}
+
+/**
+ * Delivery callback.
+ */
+function nextnode_delivery_callback($page_callback_result) {
+  print $page_callback_result;
+  // Performs end-of-request tasks.
+  nextnode_page_footer();
+}
+
+/**
+ * Retrieves IDs of nodes to be loaded using simple criteria.
+ *
+ * @param int $page
+ *   Page number for pagination.
+ * @param object $profile
+ *   NextNode profile.
+ *
+ * @return array
+ *   Array with nid values.
+ */
+function nextnode_get_nids_basic($page, $profile) {
+  global $language;
+
+  $nids = array();
+
+  if ($profile) {
+    // The pager will fetch current page number from request params.
+    $_GET['page'] = $page;
+
+    $query = db_select('node', 'n')
+      // Extend with our custom pager.
+      ->extend('NextNodePager');
+
+    $query->fields('n', array('nid'))
+      // Support node tagging.
+      ->addTag('node_access')
+      // Exclude the nid issuing the request.
+      ->condition('nid', NEXTNODE_REQUEST_NID, '!=')
+      // Filter by published status.
+      ->condition('status', $profile->filter_status);
+
+    // Filter by content type.
+    $filter_types = array_filter($profile->filter_types);
+    if (in_array('__node__', $filter_types)) {
+      // Match the type of the node issuing the request.
+      $type = nextnode_get_node_value(NEXTNODE_REQUEST_NID, 'type');
+      $filter_types[$type] = $type;
+      // Remove the placeholder.
+      unset($filter_types['__node__']);
+    }
+    if (!empty($filter_types)) {
+      $query->condition('type', $filter_types, 'IN');
+    }
+
+    // Filter by language.
+    if ($profile->filter_language != 'any') {
+      switch ($profile->filter_language) {
+        case 'default':
+          // Default site language.
+          $lang_code = language_default('language');
+          break;
+
+        case 'current':
+          // Current user's language.
+          $lang_code = $language->language;
+          break;
+
+        case 'node':
+          // Match the language of the node issuing the request.
+          $lang_code = nextnode_get_node_value(NEXTNODE_REQUEST_NID, 'language');
+          break;
+
+        default:
+          // A specific language was selected, just pass it along.
+          $lang_code = $profile->filter_language;
+          break;
+      }
+      $query->condition('language', $lang_code);
+    }
+
+    // Set the number of results defined in the active profile.
+    $query->limit($profile->num_results)
+      // Apply order and sort criteria.
+      ->orderBy($profile->order_by, $profile->sort_order);
+
+    $nids = $query->execute()->fetchCol();
+  }
+
+  return $nids;
+}
+
+/**
+ * Retrieves IDs of nodes to be loaded using Views.
+ *
+ * @param int $page
+ *   Page number for pagination.
+ * @param object $profile
+ *   NextNode profile.
+ *
+ * @return array
+ *   Array with nid values.
+ */
+function nextnode_get_nids_view($page, $profile) {
+  $nids = array();
+  list ($view_name, $view_display) = explode(':', $profile->view_name);
+  $view = views_get_view($view_name);
+  if (is_object($view)) {
+    $view->set_display($view_display);
+    $view->set_current_page($page);
+    $view->pre_execute();
+    $view->execute();
+    foreach ($view->result as $result) {
+      $nids[] = $result->nid;
+    }
+    // Set the flag that will be picked by nextnode_is_last_page() when checking
+    // if this is the last page of results available.
+    if (($view->query->offset + 1) == $view->total_rows) {
+      define('NEXTNODE_QUERY_LIMIT_REACHED', TRUE);
+    }
+  }
+
+  return $nids;
+}
+
+/**
+ * Generates the HTML output of selected node(s).
+ *
+ * @param array $nids
+ *   Array with nids.
+ *
+ * @return string
+ *   HTML output generated by selected nodes.
+ */
+function nextnode_process_nodes(array $nids) {
+  global $_boost;
+
+  $output = '';
+
+  // Prevent Boost from caching individual node requests. We'll re-enable this
+  // when dealing with the final response.
+  if (isset($_boost) && (isset($_boost['is_cacheable']) && $_boost['is_cacheable'])) {
+    $_boost['is_cacheable'] = FALSE;
+    // Save the previous value.
+    $_boost['nextnode_is_cacheable'] = TRUE;
+  }
+
+  foreach ($nids as $nid) {
+    drupal_static('_nextnode_ajax_nid_', $nid);
+    $path = 'node/' . $nid;
+    // Activate the requested node path. We're trying to emulate a real node
+    // view event as much as possible.
+    menu_set_active_item($path);
+    // Get node's output as if it is being processed by the menu handler. We
+    // could use node_load() and node_view() to get the node, however in this
+    // way we ensure that hooks operating at page level are inovked.
+    $markup = menu_execute_active_handler($path, FALSE);
+    // Some page callbacks return a render array.
+    if (is_array($markup)) {
+      $markup = render($markup);
+    }
+    $output .= $markup;
+    // Performs end-of-request tasks.
+    module_invoke_all('exit');
+  }
+
+  return $output;
+}
+
+/**
+ * Custom version of drupal_page_footer() to perform end-of-request tasks.
+ */
+function nextnode_page_footer() {
+  global $_boost;
+
+  // Restore the original request path.
+  $path = drupal_static('_nextnode_request_path_');
+  menu_set_active_item($path);
+
+  // If Boost caching was enabled, restore the previous value.
+  if (isset($_boost) && isset($_boost['is_cacheable']) && isset($_boost['nextnode_is_cacheable'])) {
+    $_boost['is_cacheable'] = $_boost['nextnode_is_cacheable'];
+  }
+
+  module_invoke_all('exit');
+
+  if (variable_get('cache', 0) && ($cache = drupal_page_set_cache())) {
+    drupal_serve_page_from_cache($cache);
+  }
+  else {
+    ob_flush();
+  }
+
+  _registry_check_code(REGISTRY_WRITE_LOOKUP_CACHE);
+  drupal_cache_system_paths();
+  module_implements_write_cache();
+}
+
+/**
+ * Implements hook_entity_view_mode_alter().
+ */
+function nextnode_entity_view_mode_alter(&$view_mode, $context) {
+  // Enforce the view mode defined in the request to NextNode.
+  if ($context['entity_type'] == 'node' && nextnode_request_active()) {
+    $request_view_mode = drupal_static('_nextnode_request_view_mode_');
+    // We must ensure we're acting only on the node currently being served by
+    // NextNode. This is because a node may include other nodes (for example, if
+    // a view is included and it is using the "Content" row plugin style) which
+    // can also trigger entity_view().
+    if ($request_view_mode != 'default' && $context['entity']->nid == drupal_static('_nextnode_ajax_nid_')) {
+      $view_mode = $request_view_mode;
+    }
+  }
+}
+
+/**
+ * Implements hook_node_view_alter().
+ */
+function nextnode_node_view_alter(&$build) {
+  $nextnode_request = nextnode_request_active();
+  // If this a NextNode request, verify if we need to add the title to the node.
+  if ($nextnode_request && $build['#node']->nid == drupal_static('_nextnode_ajax_nid_')) {
+    $profile = drupal_static('_nextnode_request_profile_');
+    if ($profile->add_node_title == TRUE) {
+      $title = $profile->title_add_link ? l($build['#node']->title, 'node/' . $build['#node']->nid) : $build['#node']->title;
+      // TODO: is this a good idea? How to tell if we need Schema.org markup?
+      $attributes = array('itemprop' => 'name');
+      if (!empty($profile->title_class)) {
+        $attributes['class'] = explode(' ', $profile->title_class);
+      }
+      $build['nextnode_title'] = array(
+        '#theme' => 'html_tag',
+        '#tag' => $profile->title_element,
+        '#attributes' => $attributes,
+        '#value' => $title,
+        '#weight' => $profile->title_weight,
+      );
+    }
+  }
+  // Add a post render callback to wrap node's output with NextNode's markup.
+  $request_view_mode = drupal_static('_nextnode_request_view_mode_');
+  $view_mode = ($nextnode_request && $request_view_mode != 'default') ? $request_view_mode : 'full';
+  if ($build['#view_mode'] == $view_mode) {
+    $build['#post_render'][] = 'nextnode_wrap_node_markup';
+  }
+}
+
+/**
+ * Implements hook_ctools_render_alter().
+ *
+ * Modify node markup when the node is rendered by page manager.
+ */
+function nextnode_ctools_render_alter(&$info, &$is_page, &$context) {
+  if ($context['task']['name'] == 'node_view' && isset($context['contexts']['argument_entity_id:node_1']->data)) {
+    $node = $context['contexts']['argument_entity_id:node_1']->data;
+    $info['content'] = nextnode_wrap_node_markup($info['content'], array('#node' => $node));
+  }
+}
+
+/**
+ * Add NextNode wrappers to node markup.
+ *
+ * @param string $markup
+ *   Rendered node output.
+ * @param array $element
+ *   Array with at least one key called "#node" containing a node object.
+ *
+ * @return string
+ *   HTML markup wrapped with NextNode node wrapper. If the node is as a full
+ *   page, extra markup will be added to hook Waypoints initializer code.
+ */
+function nextnode_wrap_node_markup($markup, array $element) {
+  $node = $element['#node'];
+  // We MUST load the profile assigned to the current content type because we
+  // are no using it to get settings of the node issuing the Ajax request, but
+  // to validate that the node we're processing has an active profile assigned.
+  $profile = nextnode_get_content_type_profile($node->type);
+  // Make sure we need to do this. Proceed only if the current request is being
+  // delivered by NextNode or the current node's content type configuration has
+  // an active NextNode profile.
+  if (!empty($profile) && ((nextnode_request_active() && $node->nid == drupal_static('_nextnode_ajax_nid_')) || (node_is_page($node) && $profile->active == TRUE))) {
+    $path = url('node/' . $node->nid);
+    $url = url('node/' . $node->nid, array('absolute' => TRUE));
+    $theme = array(
+      'node' => $node,
+      'attributes' => array(
+        'id' => 'nextnode-' . $node->nid,
+        'class' => array(
+          'nextnode-node',
+          'nextnode-' . $node->type,
+        ),
+        'data-nid' => $node->nid,
+        'data-title' => $node->title,
+        'data-path' => $path,
+        'data-url' => $url,
+      ),
+      'markup' => $markup,
+    );
+    // This function is called for both, regular nodes being rendered as full
+    // page and nodes being delivered by NextNode, but we need to perform a few
+    // additions in each case.
+    if (nextnode_request_active()) {
+      // Add a identifier class.
+      $theme['attributes']['class'][] = 'nextnode-ajax';
+      // The node is being delivered by NextNode. Add inline Javascript.
+      if (!empty($profile->js_inline)) {
+        $theme['javascript'] = nextnode_process_inline_js($profile, $node);
+      }
+    }
+    else {
+      // This is a full page node, the one initiating Ajax requests.
+      // Add a identifier class.
+      $theme['attributes']['class'][] = 'nextnode-parent';
+      // Add NextNode styling.
+      if (variable_get('nextnode_load_css')) {
+        drupal_add_css(drupal_get_path('module', 'nextnode') . '/assets/nextnode.css', array('type' => 'file'));
+      }
+      // Add profile CSS files.
+      if (!empty($profile->css_files)) {
+        $css = nextnode_process_files($profile->css_files, CSS_DEFAULT);
+        foreach ($css as $group) {
+          foreach ($group as $file) {
+            drupal_add_css($file, array('type' => 'file', 'group' => $group));
+          }
+        }
+      }
+      // Add profile JS files.
+      if (!empty($profile->js_files)) {
+        $js = nextnode_process_files($profile->js_files, JS_DEFAULT);
+        foreach ($js as $group) {
+          foreach ($group as $file) {
+            drupal_add_js($file, array('type' => 'file', 'group' => $group));
+          }
+        }
+      }
+    }
+    // Wrap node markup.
+    $output = theme('nextnode_node', $theme);
+    // Is the request a full page one?
+    if (!nextnode_request_active() && node_is_page($node)) {
+      // Create the wrapper element to hook up the Waypoints plugin.
+      $hook_selector_class = variable_get('nextnode_hook_selector', 'nextnode-wrapper');
+      $output = theme('nextnode_wrapper', array(
+        'hook_selector_class' => $hook_selector_class,
+        'markup' => $output,
+      ));
+      // Append the loading... HTML.
+      $output .= theme('nextnode_loading', array('text' => t('Loading...')));
+      // Append the next item selector element which will be used to initiate
+      // the first Ajax request.
+      $output .= nextnode_link_selector($node->nid);
+    }
+    return $output;
+  }
+  // Just regurgitate the original markup.
+  return $markup;
+}
+
+/**
+ * Builds the HTML used as selector to hook Ajax loading events.
+ *
+ * @param int $request_nid
+ *   ID of the node issuing the request (the page node).
+ * @param int $page
+ *   Page number for pagination. Defaults to the first page.
+ *
+ * @return string
+ *   Selector HTML.
+ */
+function nextnode_link_selector($request_nid, $page = 1) {
+  global $base_path;
+
+  $path = $base_path . sprintf('nextnode/%d/%d', $request_nid, $page);
+  $selector_class = variable_get('nextnode_next_selector', 'nextnode-next');
+  $output = theme('nextnode_link', array(
+    'title' => t('Load next'),
+    'path' => $path,
+    'options' => array(
+      'attributes' => array(
+        'class' => array($selector_class),
+      ),
+    ),
+  ));
+
+  return $output;
+}
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function nextnode_preprocess_page(&$variables) {
+  $node = menu_get_object('node', 1);
+  if ($node && isset($node->type)) {
+    $profile = nextnode_get_content_type_profile($node->type);
+    if ($profile && $profile->active) {
+      // Load the Waypoints library.
+      libraries_load('waypoints');
+      // Add our loader settings.
+      $settings = nextnode_loader_settings($profile, $node);
+      drupal_add_js(array('NextNode' => $settings), 'setting');
+      // Add our JS loader code.
+      $assets_path = drupal_get_path('module', 'nextnode') . '/assets';
+      if (variable_get('nextnode_minified_code')) {
+        drupal_add_js($assets_path . '/waypoints.infinite.min.js');
+        drupal_add_js($assets_path . '/waypoints.inview.min.js');
+        drupal_add_js($assets_path . '/nextnode.min.js', array('scope' => 'footer'));
+      }
+      else {
+        drupal_add_js($assets_path . '/waypoints.infinite.js');
+        drupal_add_js($assets_path . '/waypoints.inview.js');
+        drupal_add_js($assets_path . '/nextnode.js', array('scope' => 'footer'));
+      }
+    }
+  }
+}
+
+/**
+ * Generate options to initialize the Waypoints library.
+ *
+ * @param object $profile
+ *   NextNode profile.
+ * @param object $node
+ *   Node currently being processed.
+ *
+ * @return \stdClass
+ *   Object with settings according to site and profile configuration.
+ */
+function nextnode_loader_settings($profile, $node) {
+  $settings = new stdClass();
+  $settings->hookSelector = '.' . variable_get('nextnode_hook_selector');
+  $settings->nextSelector = '.' . variable_get('nextnode_next_selector');
+  $settings->contentSelector = '.' . variable_get('nextnode_content_selector');
+  $settings->loadOffset = (int) variable_get('nextnode_load_offset');
+  $settings->scrollOffset = (int) variable_get('nextnode_scroll_offset');
+  $settings->updatePageInfo = (bool) variable_get('nextnode_change_url');
+  $settings->stickyTitle = (bool) variable_get('nextnode_sticky_title');
+  $settings->stickyOffset = (int) variable_get('nextnode_sticky_title_offset');
+
+  // Auto trigger.
+  $settings->autoTrigger = $profile->auto_trigger;
+  // Auto until.
+  $auto_trigger_until = (int) $profile->auto_trigger_until;
+  if ($auto_trigger_until > 0) {
+    $settings->autoTriggerUntil = $auto_trigger_until;
+  }
+
+  // Sticky title z-index.
+  $sticky_title_zindex = variable_get('nextnode_sticky_title_zindex');
+  if ($sticky_title_zindex !== '') {
+    $settings->stickyZindex = (int) $sticky_title_zindex;
+  }
+  // Sticky title top offset.
+  $sticky_title_top = variable_get('nextnode_sticky_title_top');
+  if ($sticky_title_top !== '') {
+    $settings->stickyTop = (int) $sticky_title_top;
+  }
+
+  // Check if we need to enable the Statistics counter.
+  if ($profile->count_stats
+    && module_exists('statistics')
+    && variable_get('statistics_count_content_views', 0)
+    && variable_get('statistics_count_content_views_ajax', 0)) {
+    // Statistics count is enabled in the profile, the Statistics module is
+    // active and it's using Ajax to increase counters. Enable the flag and our
+    // javascript loader function it will take care of the rest.
+    $settings->countStatistics = TRUE;
+  }
+  else {
+    $settings->countStatistics = FALSE;
+  }
+  // Flag to enable Google Analytics tracking.
+  $settings->gaTrackPageView = $profile->ga_pageview;
+
+  return $settings;
+}
+
+/**
+ * Process node HTML output to add NextNode's wrapper markup.
+ *
+ * This theme hook is invoked only when the node is being rendered as full page.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - hook_selector_class: CSS class name for the wrapper element. This will
+ *     be used as selector to hook Waypoints.
+ *   - markup: HTML markup generated by the node.
+ *
+ * @return string
+ *   HTML generated by the node wrapped with extra markup.
+ *
+ * @ingroup themeable
+ */
+function theme_nextnode_wrapper(array $variables) {
+  return theme('html_tag', array(
+    'element' => array(
+      '#tag' => 'div',
+      '#attributes' => array(
+        'class' => array($variables['hook_selector_class']),
+      ),
+      '#value' => $variables['markup'],
+    ),
+  ));
+}
+
+/**
+ * Process node HTML output to add NextNode markup.
+ *
+ * This theme hook is invoked for every node that is being rendered in the
+ * request, so the extra markup is added per-node.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - node: A node object.
+ *   - markup: HTML markup generated by the node.
+ *
+ * @return string
+ *   HTML markup generated by the node wrapped into a NextNode container.
+ *
+ * @ingroup themeable
+ */
+function theme_nextnode_node(array $variables) {
+  $output = theme('html_tag', array(
+    'element' => array(
+      '#tag' => 'div',
+      '#attributes' => $variables['attributes'],
+      '#value' => $variables['markup'],
+    ),
+  ));
+  if (isset($variables['javascript']) && !empty($variables['javascript'])) {
+    $output .= '<script>' . "\n" . $variables['javascript'] . "\n" . '</script>' . "\n";
+  }
+  return $output;
+}
+
+/**
+ * Generate HTML markup for NextNode links.
+ *
+ * The element is used by the Waypoints library as selector to hook load events.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - title: Link text.
+ *   - path: Link path, generated by NextNode according to the corresponding
+ *     profile assigned to the node issuing the requests.
+ *   - options: Array with options passed to l().
+ *
+ * @return string
+ *   HTML link.
+ *
+ * @ingroup themeable
+ */
+function theme_nextnode_link(array $variables) {
+  return l($variables['title'], $variables['path'], $variables['options']);
+}
+
+/**
+ * Implements hook_form_node_type_form_alter().
+ *
+ * @see _nextnode_form_node_type_form_alter()
+ */
+function nextnode_form_node_type_form_alter(&$form, $form_state) {
+  // Load code only when needed.
+  module_load_include('inc', 'nextnode', 'nextnode.admin');
+  _nextnode_form_node_type_form_alter($form, $form_state);
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ *
+ * @see _nextnode_form_node_form_alter()
+ */
+function nextnode_form_node_form_alter(&$form, $form_state, $form_id) {
+  // Firstly, check if the user has permission to override profiles.
+  if (user_access('node-specific profile override')) {
+    // Check if NextNode is enabled for this content type and if it's configured
+    // to enable profile overriding.
+    if (variable_get('nextnode_enable_' . $form['#bundle'], 0) && variable_get('nextnode_override_' . $form['#bundle'], 0)) {
+      // If enabled, the node edit form will be modified to include a new field
+      // to allow editors to select a profile.
+      module_load_include('inc', 'nextnode', 'nextnode.admin');
+      _nextnode_form_node_form_alter($form, $form_state);
+    }
+  }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function nextnode_node_insert($node) {
+  nextnode_set_node_profile($node, 'insert');
+}
+
+/**
+ * Implements hook_node_update().
+ *
+ * Saves the NextNode profile overriden in the node edit form.
+ */
+function nextnode_node_update($node) {
+  nextnode_set_node_profile($node, 'update');
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function nextnode_node_delete($node) {
+  db_delete('nextnode_index')
+    ->condition('nid', $node->nid)
+    ->execute();
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function nextnode_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'nextnode') . '/views',
+  );
+}
+
+/**
+ * Implements hook_views_default_views().
+ */
+function nextnode_views_default_views() {
+  $views = array();
+  $path = drupal_get_path('module', 'nextnode') . '/views/nextnode.inc';
+  require $path;
+  if (isset($view)) {
+    $views[$view->name] = $view;
+  }
+  return $views;
+}
+
+/**
+ * Helper function to retrieve a node value from the database.
+ *
+ * @param int $nid
+ *   Node ID.
+ * @param string $column
+ *   The name of the timestamp table column ('created' or 'changed').
+ *
+ * @return int
+ *   Unix timestamp.
+ */
+function nextnode_get_node_value($nid, $column) {
+  $node = &drupal_static(__FUNCTION__ . $nid);
+  if (!isset($node)) {
+    $node = db_select('node', 'n')
+      ->fields('n')
+      ->condition('nid', $nid)
+      ->execute()
+      ->fetchObject();
+  }
+  return (is_object($node) && isset($node->{$column})) ? $node->{$column} : NULL;
+}
+
+/**
+ * Gets the profile assigned to a specific node.
+ *
+ * @param int $nid
+ *   Node ID.
+ *
+ * @return object|mixed
+ *   A NextNode profile or FALSE if no matching profile is found.
+ */
+function nextnode_get_node_profile($nid) {
+  $profile_name = db_select('nextnode_index', 'i')
+    ->fields('i', array('profile'))
+    ->condition('nid', $nid)
+    ->execute()
+    ->fetchField();
+
+  if ($profile_name) {
+    return nextnode_get_profile($profile_name);
+  }
+
+  return FALSE;
+}
+
+/**
+ * Sets the profile override for a given node.
+ *
+ * @param object $node
+ *   A node object.
+ * @param string $mode
+ *   Operating mode. Either 'insert' or 'update', depending on the current
+ *   operation being performed on the node.
+ *
+ * @throws \InvalidMergeQueryException
+ */
+function nextnode_set_node_profile($node, $mode) {
+  if (isset($node->nextnode_override)) {
+    // Check if we need to create the record.
+    if ($node->nextnode_override && !empty($node->nextnode_profile)) {
+      db_merge('nextnode_index')
+        ->key(array('nid' => $node->nid))
+        ->fields(array(
+          'profile' => $node->nextnode_profile,
+        ))->execute();
+    }
+    // If we're updating an existent node and overriding is disabled, make sure
+    // to delete any possible record just in case the user is actually trying to
+    // revert the node to its default state.
+    elseif ($mode == 'update' && !$node->nextnode_override) {
+      nextnode_node_delete($node);
+    }
+  }
+}
+
+/**
+ * Manipulates user session to unset or restore the current user.
+ *
+ * @param string $mode
+ *   Operation mode:
+ *   - unset: makes the current user to become anonymous.
+ *   - reset: restore the previous user state.
+ */
+function nextnode_session($mode) {
+  global $user;
+
+  $original_user = &drupal_static(__FUNCTION__ . '_user');
+  $original_session = &drupal_static(__FUNCTION__ . '_session');
+
+  switch ($mode) {
+    case 'unset':
+      if (!isset($original_user)) {
+        $original_user = $user;
+      }
+      if (!isset($original_session)) {
+        $original_session = drupal_save_session();
+      }
+      drupal_save_session(FALSE);
+      $user = drupal_anonymous_user();
+      break;
+
+    case 'reset':
+      $user = $original_user;
+      drupal_save_session($original_session);
+      break;
+  }
+}
+
+/**
+ * Helper function to verify if the current request was initiated by NextNode.
+ *
+ * Since several functions of this module operate on nodes this function helps
+ * to determine whether a node is being served as part of an NextNode ajax
+ * request or not.
+ *
+ * @return bool
+ *   TRUE if the current request was headed to NextNode, false otherwise.
+ */
+function nextnode_request_active() {
+  if (defined('NEXTNODE_REQUEST') && NEXTNODE_REQUEST == TRUE) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Helper function to check if we fetched the last page of results in the queue.
+ *
+ * @param int $page
+ *   The page currently being requested.
+ * @param int $max_pages
+ *   Maximum number of pages as defined in the current profile settings.
+ *
+ * @return bool
+ *   TRUE if the current request reached the last page, FALSE otherwise.
+ */
+function nextnode_is_last_page($page, $max_pages) {
+  // Check if the request reached the maximum pages allowed by the profile.
+  if (($max_pages > 0) && $page >= $max_pages) {
+    return TRUE;
+  }
+  // Additionally, fetch functions will define a constant when it detects that
+  // no more results will be available. Check it to avoid creating next links
+  // that won't return results.
+  if (defined('NEXTNODE_QUERY_LIMIT_REACHED') && NEXTNODE_QUERY_LIMIT_REACHED == TRUE) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Generate inline Javascript code from profile settings.
+ *
+ * @param object $profile
+ *   NextNode profile.
+ * @param object $node
+ *   Node currently being processed.
+ *
+ * @return string
+ *   Javascript code.
+ */
+function nextnode_process_inline_js($profile, $node) {
+  // Replace node placeholders.
+  $search = array('[node-nid]', '[node-type]', '[node-selector]');
+  $replace = array($node->nid, $node->type, '#nextnode-' . $node->nid);
+  $js_code = str_replace($search, $replace, $profile->js_inline);
+  // Add wrapper if requested.
+  switch ($profile->js_wrapper) {
+    case 'jquery':
+      $js_code = '(function($){' . $js_code . '})(jQuery);';
+      break;
+
+    case 'jquery_ready':
+      $js_code = '(function($){$("document").ready(function(){' . $js_code . '});})(jQuery);';
+      break;
+  }
+
+  return $js_code;
+}
+
+/**
+ * Process profile companion assets to convert them to file paths.
+ *
+ * @param string $value
+ *   Text field value.
+ * @param int $default_group
+ *   The default group for CSS or JS files added to the page.
+ *
+ * @return array
+ *   File paths.
+ */
+function nextnode_process_files($value, $default_group) {
+  $files = array();
+  $default_theme = variable_get('theme_default', NULL);
+  $theme_path = drupal_get_path('theme', $default_theme);
+  $lines = array_filter(array_map('trim', explode(PHP_EOL, $value)), 'drupal_strlen');
+
+  foreach ($lines as $file) {
+    $group = $default_group;
+    if (strpos($file, '[theme]') !== FALSE) {
+      $file = str_replace('[theme]', $theme_path, $file);
+      $group = CSS_THEME;
+    }
+    $matches = array();
+    foreach (array('module', 'theme') as $type) {
+      $pattern = '/\[' . $type . '-(.+)\]/';
+      preg_match($pattern, $file, $matches);
+      if (count($matches) > 1 && ($path = drupal_get_path($type, $matches[1])) != '') {
+        $file = str_replace($matches[0], $path, $file);
+        $group = CSS_THEME;
+      }
+    }
+    $files[$group][] = $file;
+  }
+
+  return $files;
+}
