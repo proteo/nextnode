@@ -62,12 +62,20 @@ INSTALLATION
 
 1. Download the latest version of the Waypoints library from the following link:
    https://github.com/imakewebthings/waypoints/zipball/latest
-2. Unpack the contents of the zip file. Rename the resulting folder and move it
-   to your Drupal installation so it becomes available at the following path:
-   sites/all/libraries/waypoints
-   In any case, the main Waypoints library file (jquery.waypoints.js) should be
-   available at this location:
-   sites/all/libraries/waypoints/jquery.waypoints.js
+2. Unpack the contents of the zip file. Look for the folder called "lib", rename
+   it and move it to your Drupal installation so it becomes available at the
+   following path: sites/all/libraries/waypoints
+   So the final structure of the libraries directory should end up like this:
+   - libraries/
+     - waypoints/
+       - shortcuts/
+       - jquery.waypoints.js
+       - jquery.waypoints.min.js
+       - noframework.waypoints.js
+       - noframework.waypoints.min.js
+       - waypoints.debug.js
+       - zepto.waypoints.js
+       - zepto.waypoints.min.js
 3. Install this module and the Libraries 2.x module as you would normally
    install any contributed Drupal module. For further information, see:
    https://drupal.org/documentation/install/modules-themes/modules-7
