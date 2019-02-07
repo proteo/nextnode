@@ -24,6 +24,23 @@
 .nextnodesticky__wrapper {
   height: 0 !important;
 }
+/* Next page loader link */
+.nextnode-next {
+  color: #fff;
+  line-height: 1;
+  text-transform: uppercase;
+  background-color: #0d747c;
+  padding: 0.5em 1em;
+  margin: 2em 0;
+  display: inline-block;
+}
+.nextnode-next:hover,
+.nextnode-next:active,
+.nextnode-next:focus {
+  color: #fff;
+  text-decoration: none;
+  background-color: #0d5058;
+}
 /* Sticky title styling */
 .nextnodesticky {
   -webkit-transform: translateY(-100%);
