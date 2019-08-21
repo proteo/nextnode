@@ -619,7 +619,9 @@ function nextnode_wrap_node_markup($markup, array $element) {
   // Make sure we need to do this. Proceed only if the current request is being
   // delivered by NextNode or the current node's content type configuration has
   // an active NextNode profile.
-  if (!empty($profile) && ((nextnode_request_active() && $node->nid == drupal_static('_nextnode_ajax_nid_')) || (node_is_page($node) && $profile->active == TRUE))) {
+  $node_is_page = node_is_page($node);
+  $nextnode_request_active = nextnode_request_active();
+  if (!empty($profile) && (($nextnode_request_active && $node->nid == drupal_static('_nextnode_ajax_nid_')) || ($node_is_page && $profile->active == TRUE))) {
     $path = url('node/' . $node->nid);
     $url = url('node/' . $node->nid, array('absolute' => TRUE));
     $theme = array(
@@ -640,7 +642,7 @@ function nextnode_wrap_node_markup($markup, array $element) {
     // This function is called for both, regular nodes being rendered as full
     // page and nodes being delivered by NextNode, but we need to perform a few
     // additions in each case.
-    if (nextnode_request_active()) {
+    if ($nextnode_request_active) {
       // Add a identifier class.
       $theme['attributes']['class'][] = 'nextnode-ajax';
       // The node is being delivered by NextNode. Add inline Javascript.
@@ -652,33 +654,13 @@ function nextnode_wrap_node_markup($markup, array $element) {
       // This is a full page node, the one initiating Ajax requests.
       // Add a identifier class.
       $theme['attributes']['class'][] = 'nextnode-parent';
-      // Add NextNode styling.
-      if (variable_get('nextnode_load_css')) {
-        drupal_add_css(drupal_get_path('module', 'nextnode') . '/assets/nextnode.css', array('type' => 'file'));
-      }
-      // Add profile CSS files.
-      if (!empty($profile->css_files)) {
-        $css = nextnode_process_files($profile->css_files, CSS_DEFAULT);
-        foreach ($css as $group) {
-          foreach ($group as $file) {
-            drupal_add_css($file, array('type' => 'file', 'group' => $group));
-          }
-        }
-      }
-      // Add profile JS files.
-      if (!empty($profile->js_files)) {
-        $js = nextnode_process_files($profile->js_files, JS_DEFAULT);
-        foreach ($js as $group) {
-          foreach ($group as $file) {
-            drupal_add_js($file, array('type' => 'file', 'group' => $group));
-          }
-        }
-      }
+      // Load the Waypoints JS library and set up other assets for the node.
+      nextnode_load_assets($profile, $node);
     }
     // Wrap node markup.
     $output = theme('nextnode_node', $theme);
     // Is the request a full page one?
-    if (!nextnode_request_active() && node_is_page($node)) {
+    if (!$nextnode_request_active && $node_is_page) {
       // Create the wrapper element to hook up the Waypoints plugin.
       $hook_selector_class = variable_get('nextnode_hook_selector', 'nextnode-wrapper');
       $output = theme('nextnode_wrapper', array(
@@ -724,35 +706,6 @@ function nextnode_link_selector($request_nid, $page = 1) {
   ));
 
   return $output;
-}
-
-/**
- * Implements hook_preprocess_page().
- */
-function nextnode_preprocess_page(&$variables) {
-  $node = menu_get_object('node', 1);
-  if ($node && isset($node->type)) {
-    $profile = nextnode_get_content_type_profile($node->type);
-    if ($profile && $profile->active) {
-      // Load the Waypoints library.
-      libraries_load('waypoints');
-      // Add our loader settings.
-      $settings = nextnode_loader_settings($profile, $node);
-      drupal_add_js(array('NextNode' => $settings), 'setting');
-      // Add our JS loader code.
-      $assets_path = drupal_get_path('module', 'nextnode') . '/assets';
-      if (variable_get('nextnode_minified_code')) {
-        drupal_add_js($assets_path . '/waypoints.infinite.min.js');
-        drupal_add_js($assets_path . '/waypoints.inview.min.js');
-        drupal_add_js($assets_path . '/nextnode.min.js', array('scope' => 'footer'));
-      }
-      else {
-        drupal_add_js($assets_path . '/waypoints.infinite.js');
-        drupal_add_js($assets_path . '/waypoints.inview.js');
-        drupal_add_js($assets_path . '/nextnode.js', array('scope' => 'footer'));
-      }
-    }
-  }
 }
 
 /**
@@ -1121,6 +1074,63 @@ function nextnode_is_last_page($page, $max_pages) {
     return TRUE;
   }
   return FALSE;
+}
+
+/**
+ * Loads the Waypoints JS library and sets up assets for a parent node.
+ *
+ * @param object $profile
+ *   A NextNode profile.
+ * @param object $node
+ *   Node being loaded.
+ */
+function nextnode_load_assets($profile, $node) {
+  // Load the Waypoints library.
+  $variant = variable_get('nextnode_minified_code') ? 'minified' : NULL;
+  $waypoints = libraries_load('waypoints', $variant);
+  if (empty($waypoints) || empty($waypoints['loaded'])) {
+    drupal_set_message(t("Couldn't load the Waypoints library. Please ensure it is properly installed."), 'error');
+    return;
+  }
+  // Load integration files. This could be declared in the the Waypoints library
+  // definition but we want to deliver the minified version when possible and be
+  // more specific about the location of the file in the page.
+  $assets = drupal_get_path('module', 'nextnode') . '/assets/';
+  if ($variant == 'minified') {
+    drupal_add_js($assets . 'waypoints.infinite.min.js');
+    drupal_add_js($assets . 'waypoints.inview.min.js');
+    drupal_add_js($assets . 'nextnode.min.js', array('scope' => 'footer'));
+  }
+  else {
+    drupal_add_js($assets . 'waypoints.infinite.js');
+    drupal_add_js($assets . 'waypoints.inview.js');
+    drupal_add_js($assets . 'nextnode.js', array('scope' => 'footer'));
+  }
+  // Add our loader settings.
+  $settings = nextnode_loader_settings($profile, $node);
+  drupal_add_js(array('NextNode' => $settings), 'setting');
+  // Add NextNode styling.
+  if (variable_get('nextnode_load_css')) {
+    drupal_add_css(drupal_get_path('module', 'nextnode') . '/assets/nextnode.css', array('type' => 'file'));
+  }
+  // Add profile CSS files.
+  if (!empty($profile->css_files)) {
+    $css = nextnode_process_files($profile->css_files, CSS_DEFAULT);
+    foreach ($css as $group) {
+      foreach ($group as $file) {
+        drupal_add_css($file, array('type' => 'file', 'group' => $group));
+      }
+    }
+  }
+  // Add profile JS files.
+  if (!empty($profile->js_files)) {
+    $js = nextnode_process_files($profile->js_files, JS_DEFAULT);
+    foreach ($js as $group) {
+      foreach ($group as $file) {
+        drupal_add_js($file, array('type' => 'file', 'group' => $group));
+      }
+    }
+  }
 }
 
 /**
