@@ -210,18 +210,28 @@ function nextnode_libraries_info() {
       'vendor url' => 'http://imakewebthings.com/waypoints/',
       'download url' => 'https://github.com/imakewebthings/waypoints/zipball/latest',
       'version arguments' => array(
-        'file' => 'jquery.waypoints.min.js',
-        'pattern' => '/Waypoints - (\d+\.\d+(\.\d+)?)/',
+        'file' => 'jquery.waypoints.js',
+        'pattern' => '@(?i:Waypoints)\s-\s([0-9\.a-z]+)@',
         'lines' => 2,
       ),
       'files' => array(
         'js' => array(
-          // Main library file.
-          'jquery.waypoints.min.js',
-          // Shortcuts.
-          'shortcuts/infinite.min.js',
-          'shortcuts/inview.min.js',
-          'shortcuts/sticky.min.js',
+          'jquery.waypoints.js' => array('weight' => -100),
+          'shortcuts/infinite.js' => array('weight' => -99),
+          'shortcuts/inview.js' => array('weight' => -98),
+          'shortcuts/sticky.js' => array('weight' => -97),
+        ),
+      ),
+      'variants' => array(
+        'minified' => array(
+          'files' => array(
+            'js' => array(
+              'jquery.waypoints.min.js' => array('weight' => -100),
+              'shortcuts/infinite.min.js' => array('weight' => -99),
+              'shortcuts/inview.min.js' => array('weight' => -98),
+              'shortcuts/sticky.min.js' => array('weight' => -97),
+            ),
+          ),
         ),
       ),
     ),
