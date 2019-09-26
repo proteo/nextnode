@@ -65,7 +65,7 @@ INSTALLATION
 2. Unpack the contents of the zip file. Look for the folder called "lib", rename
    it and move it to your Drupal installation so it becomes available at the
    following path: sites/all/libraries/waypoints
-   So the final structure of the libraries directory should end up like this:
+   The final structure of the libraries directory should look like this:
    - libraries/
      - waypoints/
        - shortcuts/
@@ -92,7 +92,7 @@ As already mentioned, the basic purpose of this module is to append Ajax-loaded
 content to your node pages (and only node pages). There are a few concepts
 involved in the process which you'll need to be familiarized with:
 
-- Parent node: is the node that initiates the process, in other words, the node
+- Parent node: is the node that initiates the process. In other words, the node
   already present in the page before any scrolling is performed.
 - NextNode request: the Ajax-powered request/response cycle performed in order
   to fetch the nodes that will be appended to the page as users scroll down.
@@ -104,7 +104,7 @@ involved in the process which you'll need to be familiarized with:
 
 To summarize how the user-facing functionality of the module works:
 
-1. The user visits any node page (this is what we'll call the parent node).
+1. The user visits any node page (which will be the parent node).
 2. The user scrolls down the page, reaching a threshold that fires the request.
 3. The request is performed and fetches a node (or nodes) from the server. How
    many and which nodes are fetched depends on the configuration of the profile
@@ -125,25 +125,25 @@ At the admin level, the process is basically:
 HOW QUEUES WORK
 
 As we mentioned, profiles are the entities controlling how the request/response
-cycle works, and a crucial part of it is the queue, or list of of nodes to be
+cycle works, and a crucial part of it is the queue, or list of nodes to be
 delivered by each request. Each profile has two methods to define how many and
 which nodes will be selected by the queue:
 
 1. Basic (time based sorting). This method uses standard node properties (content
    type, language, created timestamp, etc.) to create a simple filtering and
    sorting criteria.
-2. Advanced (available if the Views module is enabled). It allows you to use the
+2. Advanced (available if the Views module is enabled). It allows you to use a
    view of your choosing to create complex filtering and sorting criteria. You
    can use any number of mechanisms, contrib modules, etc. as long as they are
    compatible with Views in order to define such criteria. In this mode it is
    specially important to exclude the parent node from appearing in the result
    set, which would create a duplicate (or even break the page). Please check
    the preconfigured view called "NextNode queue", which is provided by the
-   module and can be used as start point or template to create your own.
-   Note tha the view is used only to filter and sort the queue –in other words,
-   to figure out what node or nodes will be presented next– but not to format
-   the output, which is defined by the view mode selected in the "Node options"
-   area of the active profile settings.
+   module and can be used as start point or as template to create your own.
+   Note that the view is used only to filter and sort the queue –in other words,
+   to figure out what node or nodes will be added to the queue– but not to
+   display or format the output. That is handled by the node's view mode defined
+   in the "Node options" area of the active Nextnode profile.
 
 PROFILE CONFIGURATION
 
@@ -151,18 +151,17 @@ PROFILE CONFIGURATION
    http://[yourdomain]/admin/config/content/nextnode
 2. Create a new profile using the "Add profile" button or use the default one
    that is provided with the module, clicking on the corresponding "edit" link.
-3. Configure the profile to match your preferences. Use the "Method" radios to
+3. Configure the profile to match your preferences. Use the "Method" options to
    define the method used to build the queue. If you select the "Advanced" mode,
-   make sure to select the corresponding view and to configure it according to
-   your needs.
+   make sure to select a view configured according to your needs.
 4. Save the changes to the profile.
 5. Open the configuration screen of any content type, locate the "NextNode" tab
-   and check the "Enable NextNode functionality for this content type" box. You
-   will need to select the profile you just created or edited. Now, every time
-   a node of this type is opened, the settings of the selected profile will be
-   used to fetch nodes when users scroll down the page. Note that your editors
-   will be able to override the selected profile and choose a different one on
-   node basis if you also check the "Enable profile overriding" checkbox.
+   and check the "Enable NextNode functionality for this content type" box. Then
+   select the profile you just created or edited. Now, every time a node of this
+   type is displayed in the site, the settings of the selected profile will be
+   used to fetch nodes when users scroll down the page. If you want your editors
+   to be able to override the selected profile and apply a different one on node
+   basis, check the "Enable profile overriding" checkbox.
 
 GLOBAL CONFIGURATION
 
@@ -218,7 +217,7 @@ delivered via the Ajax request. There are two ways to do this:
    nextnode.scrollout
    Triggered every time the node leaves the viewport.
 
-   You can use this code snippet as a starting point for your own script:
+   You can use this code snippet as starting point for your own script:
 
    (function ($) {
    Drupal.behaviors.MyModule = {
@@ -257,21 +256,21 @@ FREQUENTLY ASKED QUESTIONS (FAQ)
 
   By default, most Drupal themes include page title markup in the page.tpl.php
   template, which is not rendered as part of NextNode requests (NextNode will
-  strip any page elements other than the node itself). To fix this, check the
+  strip any page elements other than the node itself). To change this, check the
   "Add node title" option located under the "Node options" area of your active
-  profile configuration form. Note: if you are using Page Manager/Panels and
-  face this issue, checking this option will NOT work. In such case, make sure
-  to add the page title using one of the panes available for that effect.
+  profile configuration. Note: if you are using Page Manager/Panels to display
+  nodes, checking this option will NOT work. In such case, make sure to add the
+   page title using one of the panes provided by Panels for such effect.
 
 * I have enabled the "Sticky title" option, but I can't see it.
 
-  Since the element is positioned with CSS (position:fixed), you may need to
-  make adjustments to its properties (z-index, spacing) in order to make it work
-  as intended, specially if your theme already displays other elements in the
-  same screen area (such as toolbars, navigation menus, etc.). Use the options
-  provided in the global configuration screen ("Stacking position" and "Top
-  space") to re-position the element, or leave them empty and apply custom
-  styling from your theme's CSS using the .nextnodesticky--active selector.
+  Since the title element is positioned with CSS (position:fixed), you may need
+  to make adjustments to its properties (z-index, spacing) in order to make it
+  work for your site, specially if your theme already displays other elements in
+  the same screen area (such as toolbars, navigation menus, etc.). You can uUse
+  the options provided in the global configuration screen ("Stacking position"
+  and "Top space") to re-position the element, or leave them empty and apply
+  custom styling using the .nextnodesticky--active selector.
 
 * I need to interact with the nodes delivered by NextNode using Javascript.
 
