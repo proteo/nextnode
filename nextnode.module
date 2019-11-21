@@ -701,6 +701,7 @@ function nextnode_link_selector($request_nid, $page = 1) {
     'options' => array(
       'attributes' => array(
         'class' => array($selector_class),
+        'rel' => 'nofollow',
       ),
     ),
   ));
